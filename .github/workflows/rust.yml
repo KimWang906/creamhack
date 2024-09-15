@@ -1,5 +1,3 @@
-# .github/workflows/release.yml
-
 on:
   release:
     types: [created]
@@ -14,12 +12,31 @@ jobs:
         include:
           - target: x86_64-pc-windows-gnu
             archive: zip
-          - target: x86_64-unknown-linux-musl
+          - target: x86_64-unknown-linux-gnu
             archive: tar.gz tar.xz tar.zst
           - target: x86_64-apple-darwin
             archive: zip
+
     steps:
       - uses: actions/checkout@main
+
+      # Install dependencies for each target
+      - name: Install dependencies for Linux (gnu)
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+
+      - name: Install dependencies for Windows (gnu)
+        if: matrix.target == 'x86_64-pc-windows-gnu'
+        # run: |
+        #   choco install <windows_package_1>
+        #   choco install <windows_package_2>
+
+      - name: Install dependencies for macOS (darwin)
+        if: matrix.target == 'x86_64-apple-darwin'
+        # run: |
+        #   brew install <mac_package_1>
+        #   brew install <mac_package_2>
+
       - name: Compile and release
         uses: rust-build/rust-build.action@v1.4.5
         env:
