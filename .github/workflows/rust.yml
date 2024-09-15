@@ -25,14 +25,14 @@ jobs:
         if: matrix.target == 'x86_64-unknown-linux-gnu'
         run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
 
-      - name: Install dependencies for Windows (gnu)
-        if: matrix.target == 'x86_64-pc-windows-gnu'
+      # - name: Install dependencies for Windows (gnu)
+      #   if: matrix.target == 'x86_64-pc-windows-gnu'
         # run: |
         #   choco install <windows_package_1>
         #   choco install <windows_package_2>
 
-      - name: Install dependencies for macOS (darwin)
-        if: matrix.target == 'x86_64-apple-darwin'
+      # - name: Install dependencies for macOS (darwin)
+      #   if: matrix.target == 'x86_64-apple-darwin'
         # run: |
         #   brew install <mac_package_1>
         #   brew install <mac_package_2>
