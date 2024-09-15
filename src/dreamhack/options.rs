@@ -1,3 +1,5 @@
+use crate::custom_widgets::popup::PopupItem;
+
 use super::ToRequestString;
 use ratatui::prelude::*;
 use std::{fmt::Display, str::FromStr};
@@ -57,7 +59,24 @@ impl From<Difficulty> for Option<u64> {
     }
 }
 
-impl FromIndex<Difficulty> for Difficulty {
+impl PopupItem for Difficulty {
+    fn variants() -> Vec<Difficulty> {
+        [
+            Difficulty::All,
+            Difficulty::LEVEL1,
+            Difficulty::LEVEL2,
+            Difficulty::LEVEL3,
+            Difficulty::LEVEL4,
+            Difficulty::LEVEL5,
+            Difficulty::LEVEL6,
+            Difficulty::LEVEL7,
+            Difficulty::LEVEL8,
+            Difficulty::LEVEL9,
+            Difficulty::LEVEL10,
+        ]
+        .to_vec()
+    }
+
     fn from_index(index: usize) -> Difficulty {
         match index {
             0 => Difficulty::All,
@@ -73,24 +92,6 @@ impl FromIndex<Difficulty> for Difficulty {
             10 => Difficulty::LEVEL10,
             _ => Difficulty::All,
         }
-    }
-}
-
-impl Variants<Difficulty> for Difficulty {
-    fn variants() -> &'static [Difficulty] {
-        &[
-            Difficulty::All,
-            Difficulty::LEVEL1,
-            Difficulty::LEVEL2,
-            Difficulty::LEVEL3,
-            Difficulty::LEVEL4,
-            Difficulty::LEVEL5,
-            Difficulty::LEVEL6,
-            Difficulty::LEVEL7,
-            Difficulty::LEVEL8,
-            Difficulty::LEVEL9,
-            Difficulty::LEVEL10,
-        ]
     }
 }
 
@@ -204,7 +205,7 @@ pub enum Category {
     Crypto,
 }
 
-impl FromIndex<Category> for Category {
+impl PopupItem for Category {
     fn from_index(index: usize) -> Category {
         match index {
             0 => Category::All,
@@ -215,17 +216,16 @@ impl FromIndex<Category> for Category {
             _ => Category::All,
         }
     }
-}
 
-impl Variants<Category> for Category {
-    fn variants() -> &'static [Category] {
-        &[
+    fn variants() -> Vec<Category> {
+        [
             Category::All,
             Category::Pwnable,
             Category::Reversing,
             Category::Web,
             Category::Crypto,
         ]
+        .to_vec()
     }
 }
 
@@ -261,7 +261,7 @@ pub enum Status {
     Solved,
 }
 
-impl FromIndex<Status> for Status {
+impl PopupItem for Status {
     fn from_index(index: usize) -> Status {
         match index {
             0 => Status::ToDo,
@@ -271,11 +271,9 @@ impl FromIndex<Status> for Status {
             _ => Status::All,
         }
     }
-}
 
-impl Variants<Status> for Status {
-    fn variants() -> &'static [Status] {
-        &[Status::ToDo, Status::All, Status::Attempted, Status::Solved]
+    fn variants() -> Vec<Status> {
+        [Status::ToDo, Status::All, Status::Attempted, Status::Solved].to_vec()
     }
 }
 
@@ -308,7 +306,7 @@ pub enum Orderings {
     LeastSolved,
 }
 
-impl FromIndex<Orderings> for Orderings {
+impl PopupItem for Orderings {
     fn from_index(index: usize) -> Orderings {
         match index {
             0 => Orderings::Newist,
@@ -317,15 +315,14 @@ impl FromIndex<Orderings> for Orderings {
             _ => Orderings::Newist,
         }
     }
-}
 
-impl Variants<Orderings> for Orderings {
-    fn variants() -> &'static [Orderings] {
-        &[
+    fn variants() -> Vec<Orderings> {
+        [
             Orderings::Newist,
             Orderings::MostSolved,
             Orderings::LeastSolved,
         ]
+        .to_vec()
     }
 }
 

@@ -8,20 +8,109 @@ const CHALLENGES_URL: &str = "https://dreamhack.io/api/v1/wargame/challenges/";
 #[allow(dead_code)]
 const LOGIN_URL: &str = "https://dreamhack.io/api/v1/auth/login/";
 
-pub trait FromIndex<T> {
-    fn from_index(index: usize) -> T;
-}
-
-pub trait Variants<T> {
-    fn variants() -> &'static [T];
-}
-
 pub trait ToRequestString {
     fn to_request_string(&self) -> String;
 }
 
 pub trait ToColorString {
     fn to_color_string(&self) -> Span;
+}
+
+pub mod auth {
+    use serde::{Deserialize, Serialize};
+
+    use super::LOGIN_URL;
+
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct Login {
+        email: String,
+        password: String,
+        save_login: bool,
+    }
+
+    #[derive(Debug, Clone, Default)]
+    pub struct AuthKey(String);
+
+    #[derive(Debug, Clone, Default)]
+    pub struct AuthCookies {
+        csrf_token: String,
+        sessionid: String,
+    }
+
+    #[derive(Debug, Clone, Default)]
+    pub struct Auth {
+        key: AuthKey,
+        cookies: AuthCookies,
+    }
+
+    impl AuthCookies {
+        pub fn to_request(&self) -> String {
+            format!(
+                "csrf_token={}; sessionid={}",
+                self.csrf_token, self.sessionid
+            )
+        }
+
+        pub fn get_csrf_token(&self) -> &str {
+            &self.csrf_token
+        }
+    }
+
+    impl Auth {
+        pub fn get_key(&self) -> &str {
+            &self.key.0
+        }
+
+        pub fn get_cookies(&self) -> &AuthCookies {
+            &self.cookies
+        }
+
+        pub fn send_login(email: &str, password: &str, save_login: bool) -> Option<Auth> {
+            let login = Login {
+                email: email.to_owned(),
+                password: password.to_owned(),
+                save_login,
+            };
+
+            match reqwest::blocking::Client::new()
+                .post(LOGIN_URL)
+                .json(&login)
+                .send()
+            {
+                Ok(response) => {
+                    let mut cookies = AuthCookies::default();
+                    for cookie in response.cookies() {
+                        match cookie.name() {
+                            "csrf_token" => {
+                                cookies.csrf_token = cookie.value().to_owned();
+                            }
+                            "sessionid" => {
+                                cookies.sessionid = cookie.value().to_owned();
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    let key = AuthKey(
+                        response
+                            .json::<serde_json::Value>()
+                            .unwrap()
+                            .get("key")
+                            .unwrap()
+                            .as_str()
+                            .unwrap()
+                            .to_owned(),
+                    );
+
+                    Some(Auth { key, cookies })
+                }
+                Err(e) => {
+                    dbg!(e);
+                    None
+                } // TODO: Error Handling
+            }
+        }
+    }
 }
 
 pub mod challenge {
@@ -276,10 +365,18 @@ pub mod challenge {
     }
 
     pub mod handle {
+
+        use core::panic;
+
+        use anyhow::Context;
         use ratatui::text::{Line, Text};
+        use reqwest::{
+            blocking::Client,
+            header::{HeaderMap, HeaderValue, COOKIE},
+        };
 
         /* Handler for Challenge */
-        use super::{ChallengeResponseData, ToColorString};
+        use super::{auth::Auth, vm_info::MachineInfo, ChallengeResponseData, ToColorString};
         use crate::dreamhack::options::Difficulty;
 
         #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -380,6 +477,158 @@ pub mod challenge {
 
             pub fn get_metadata(&self) -> &ChallengeMetadata {
                 &self.metadata
+            }
+
+            pub fn download_challenge(&self) -> Vec<u8> {
+                let response = reqwest::blocking::get(self.metadata.get_public())
+                    .expect("Failed to download challenge file")
+                    .bytes()
+                    .expect("Failed to get bytes from response");
+
+                response.to_vec()
+            }
+
+            pub fn create_vm(&self, auth: &Auth) -> bool {
+                if auth.get_key().is_empty() {
+                    #[cfg(debug_assertions)]
+                    log::error!("AuthKey is empty");
+                    return false;
+                }
+
+                let mut headers = HeaderMap::new();
+                headers.insert(
+                    COOKIE,
+                    HeaderValue::from_str(&format!(
+                        "i18n_redirected=ko; {}",
+                        auth.get_cookies().to_request()
+                    ))
+                    .unwrap(),
+                );
+
+                headers.insert(
+                    "X-Csrftoken",
+                    HeaderValue::from_str(auth.get_cookies().get_csrf_token()).unwrap(),
+                );
+
+                let request = Client::new()
+                    .post(format!(
+                        "https://dreamhack.io/api/v1/wargame/challenges/{}/live/",
+                        self.id
+                    ))
+                    .bearer_auth(auth.get_key())
+                    .headers(headers);
+
+                #[cfg(debug_assertions)]
+                log::info!("Request: {:?}", request);
+
+                let response = request.send().context("Failed to create VM").unwrap();
+
+                let status = response.status();
+                #[cfg(debug_assertions)]
+                let response_text = response
+                    .text()
+                    .unwrap_or_else(|_| "Failed to read response body".to_string());
+
+                #[cfg(debug_assertions)]
+                if !status.is_success() {
+                    log::error!("Failed to create VM, status: {}", status);
+                    log::error!("Response: {:?}", response_text);
+                } else {
+                    log::info!("VM created successfully");
+                    log::info!("Response: {:?}", response_text);
+                }
+
+                status.is_success()
+            }
+
+            pub fn get_vm_info(&self, auth: &Auth) -> MachineInfo {
+                if auth.get_key().is_empty() {
+                    #[cfg(debug_assertions)]
+                    log::error!("AuthKey is empty");
+                    panic!("AuthKey is empty");
+                }
+
+                let mut headers = HeaderMap::new();
+                headers.insert(
+                    COOKIE,
+                    HeaderValue::from_str(&format!(
+                        "i18n_redirected=ko; {}",
+                        auth.get_cookies().to_request()
+                    ))
+                    .unwrap(),
+                );
+
+                let request = Client::new()
+                    .get(format!(
+                        "https://dreamhack.io/api/v1/wargame/challenges/{}/live/",
+                        self.id
+                    ))
+                    .bearer_auth(auth.get_key())
+                    .headers(headers);
+
+                #[cfg(debug_assertions)]
+                log::info!("Request: {:?}", request);
+
+                let response = request.send().context("Failed to get VM info").unwrap();
+
+                let text = response.text();
+
+                #[cfg(debug_assertions)]
+                log::info!("Response: {:?}", text);
+
+                serde_json::from_str::<MachineInfo>(
+                    text.context("Failed to get text from response")
+                        .unwrap()
+                        .as_str(),
+                )
+                .context("Failed to parse JSON")
+                .unwrap()
+            }
+
+            pub fn submit_flag(&self, auth: Auth, flag: &str) -> bool {
+                if auth.get_key().is_empty() {
+                    #[cfg(debug_assertions)]
+                    log::error!("AuthKey is empty");
+                    panic!("AuthKey is empty");
+                }
+
+                let mut headers = HeaderMap::new();
+                headers.insert(
+                    COOKIE,
+                    HeaderValue::from_str(&format!(
+                        "i18n_redirected=ko; {}",
+                        auth.get_cookies().to_request()
+                    ))
+                    .unwrap(),
+                );
+
+                let request = reqwest::blocking::Client::new()
+                    .post(format!(
+                        "https://dreamhack.io/api/v1/wargame/challenges/{}/auth",
+                        self.id
+                    ))
+                    .bearer_auth(auth.get_key())
+                    .json(&serde_json::json!({
+                        "flag": flag
+                    }));
+
+                let response = request.send().context("Failed to send flag").unwrap();
+
+                let status = response.status();
+                #[cfg(debug_assertions)]
+                let response_text = response
+                    .text()
+                    .unwrap_or_else(|_| "Failed to read response body".to_string());
+
+                #[cfg(debug_assertions)]
+                if !status.is_success() {
+                    log::error!("Failed to create VM, status: {}", status);
+                    log::error!("Response: {:?}", response_text);
+                } else {
+                    log::info!("VM created successfully");
+                }
+
+                status.is_success()
             }
         }
 
@@ -494,6 +743,116 @@ pub mod challenge {
                     },
                 }
             }
+        }
+    }
+}
+
+pub mod vm_info {
+    use anyhow::Context;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize, Deserialize, Default, Debug)]
+    pub struct MachineInfo {
+        id: String,
+        state: String,
+        memory: i64,
+        swap: i64,
+        starttime: String,
+        endtime: String,
+        cputime: f64,
+        host: String,
+        port_mappings: Vec<Vec<PortMapping>>,
+    }
+
+    #[derive(Serialize, Deserialize, Debug)]
+    #[serde(untagged)]
+    pub enum PortMapping {
+        Integer(i64),
+        String(String),
+    }
+
+    impl PortMapping {
+        pub fn get_port(&self) -> u16 {
+            match self {
+                PortMapping::Integer(port) => *port as u16,
+                _ => unreachable!(),
+            }
+        }
+
+        pub fn get_protocol(&self) -> String {
+            match self {
+                PortMapping::String(protocol) => protocol.clone(),
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    #[derive(Debug, Clone, Default)]
+    pub enum Protocol {
+        #[default]
+        None,
+        Tcp,
+        Udp,
+    }
+
+    impl Protocol {
+        fn from_str(protocol: &str) -> Self {
+            match protocol {
+                "tcp" => Protocol::Tcp,
+                "udp" => Protocol::Udp,
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    #[derive(Debug, Default, Clone)]
+    pub struct NetworkInfo {
+        pub protocol: Protocol,
+        pub host: String,
+        pub external: u16,
+        pub internal: u16,
+    }
+
+    impl MachineInfo {
+        /// port mappings of machine.
+        ///
+        /// example: "port_mappings":[["tcp",10332,8080]]
+        pub fn get_network_info(&self) -> Option<NetworkInfo> {
+            let info = self
+                .port_mappings
+                .first()
+                .context("Failed to get port mappings")
+                .ok();
+            info.map(|info| NetworkInfo {
+                protocol: Protocol::from_str(
+                    &info
+                        .first()
+                        .context("Failed to get protocol")
+                        .unwrap()
+                        .get_protocol(),
+                ),
+                host: self.host.clone(),
+                external: info
+                    .get(1)
+                    .context("Failed to get external port")
+                    .unwrap()
+                    .get_port(),
+                internal: info
+                    .get(2)
+                    .context("Failed to get internal port")
+                    .unwrap()
+                    .get_port(),
+            })
+        }
+    }
+
+    impl NetworkInfo {
+        pub fn get_uri_pwn(&self) -> String {
+            format!("{}:{}", self.host, self.external)
+        }
+
+        pub fn get_uri_web(&self) -> String {
+            format!("http://{}:{}/", self.host, self.external)
         }
     }
 }
