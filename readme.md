@@ -39,3 +39,24 @@
 
 * ↑ / ↓ : Select feature
 * Enter : Execute selected feature
+
+## Installation
+
+### Ubuntu
+
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+sudo apt install pkg-config libssl-dev libdbus-1-dev
+cargo install --path .
+```
+
+### MacOS
+
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+cargo install --path .
+```
+
+### Windows
+
+* TODO

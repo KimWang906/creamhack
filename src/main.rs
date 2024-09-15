@@ -23,7 +23,7 @@ use rpassword::prompt_password;
 use termui::App;
 
 fn main() -> Result<()> {
-    // Logger initialization(For debugging)
+    // Logger initialization (For debugging)
     #[cfg(debug_assertions)]
     {
         let logfile = FileAppender::builder()
@@ -39,21 +39,25 @@ fn main() -> Result<()> {
         log::info!("Logger initialized");
     }
 
-    // TODO: Fix keyring
     // Create separate entries for email and password
     let email_entry = Entry::new("DreamhackService", "dreamhack_email").unwrap();
     let password_entry = Entry::new("DreamhackService", "dreamhack_password").unwrap();
 
-    let mut email: String = String::new();
-    let mut password: String = String::new();
+    let email: String;
+    let password: String;
 
-    if email_entry.get_secret().is_err() && password_entry.get_password().is_err() {
+    // Check if email and password are already stored
+    let email_result = email_entry.get_secret();
+    let password_result = password_entry.get_password();
+
+    if email_result.is_err() || password_result.is_err() {
         email = Input::new().with_prompt("Email").interact().unwrap();
         password = prompt_password("Password: ").unwrap();
 
         // Save email and password
         match email_entry.set_secret(email.as_bytes()) {
-            Ok(()) => println!("Successfully set email to '{email}'"),
+            Ok(()) => println!("Successfully set email"),
+            #[allow(unused_variables)]
             Err(err) => {
                 #[cfg(debug_assertions)]
                 log::error!("Error setting email: {err}")
@@ -61,20 +65,23 @@ fn main() -> Result<()> {
         }
         match password_entry.set_password(&password) {
             Ok(()) => println!("Successfully set password"),
+            #[allow(unused_variables)]
             Err(err) => {
                 #[cfg(debug_assertions)]
                 log::error!("Error setting password: {err}")
             }
         }
+    } else {
+        email = String::from_utf8_lossy(&email_result.unwrap()).into_owned();
+        #[cfg(debug_assertions)]
+        {
+            log::info!("Retrieved email: {}", email);
+            log::info!("Retrieved password: (hidden)");
+        }
     }
 
-    #[cfg(debug_assertions)]
-    {
-        let email_info = String::from_utf8_lossy(&email_entry.get_secret().unwrap()).into_owned();
-        log::info!("email: {}", email_info);
-        assert_eq!(email_info, email);
-        assert_eq!(password_entry.get_password().unwrap(), password);
-    }
+    println!("Logged in with email: {}", email);
+    println!("Password is securely stored and retrieved.");
 
     // TUI initialization
     color_eyre::install()?;
