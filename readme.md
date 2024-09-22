@@ -60,3 +60,23 @@ cargo install --path .
 ### Windows
 
 * TODO
+
+## Config file
+
+### Linux Config Path
+
+```sh
+/home/yourname/.config/creamhack/config.toml
+```
+
+### MacOS Config Path
+
+```sh
+/Users/yourname/Library/Application\ Support/creamhack/config.toml
+```
+
+### Windows Config Path
+
+```sh
+C:\Users\youname\AppData\Roaming\creamhack\config.toml
+```
