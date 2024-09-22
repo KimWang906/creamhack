@@ -32,7 +32,7 @@ impl Config {
                     .unwrap();
 
                 let mut config_path = dirs::config_dir().unwrap();
-                config_path.push("dreamhack");
+                config_path.push("creamhack");
 
                 if !config_path.exists() {
                     std::fs::create_dir_all(&config_path)
@@ -51,7 +51,7 @@ impl Config {
 
     fn get_config_path() -> PathBuf {
         let mut path = dirs::config_dir().unwrap();
-        path.push("dreamhack/config.toml");
+        path.push("creamhack/config.toml");
         path
     }
 }
