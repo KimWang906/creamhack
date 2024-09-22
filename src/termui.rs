@@ -49,6 +49,7 @@ const OPTIONS: ([Button; 4], OptionsData, usize) = (
 );
 
 pub(crate) struct App {
+    pub(crate) config: Option<crate::Config>,
     pub(crate) should_exit: bool,
     pub(crate) auth: Auth,
     pub(crate) popup_state: PopupState,
@@ -69,6 +70,7 @@ pub(crate) struct App {
 impl Default for App {
     fn default() -> Self {
         Self {
+            config: None,
             should_exit: false,
             auth: Auth::default(),
             popup_state: PopupState::None,
@@ -248,6 +250,7 @@ impl App {
     pub fn run(
         mut self,
         mut terminal: DefaultTerminal,
+        config: crate::Config,
         email_entry: Entry,
         password_entry: Entry,
     ) -> Result<()> {
@@ -281,6 +284,7 @@ impl App {
             },
         };
 
+        self.config = Some(config);
         self.fs_tree_items = build_tree(&self.workdir)
             .context("Failed to build tree")
             .unwrap();
@@ -455,6 +459,10 @@ impl App {
                                 .get_metadata()
                                 .get_repository()
                         ));
+
+                        if self.config.as_ref().unwrap().extract_chall_file {
+                            unimplemented!("Extracting challenge file is not implemented yet");
+                        }
                     }
                 }
             }

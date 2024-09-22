@@ -1,3 +1,4 @@
+mod config;
 mod custom_widgets;
 /// Module: dreamhack
 ///
@@ -8,6 +9,7 @@ mod render;
 mod termui;
 
 use color_eyre::Result;
+use config::Config;
 use dialoguer::Input;
 use keyring::Entry;
 #[cfg(debug_assertions)]
@@ -17,7 +19,6 @@ use log4rs::{
     append::file::FileAppender,
     config::{Appender, Root},
     encode::pattern::PatternEncoder,
-    Config,
 };
 use rpassword::prompt_password;
 use termui::App;
@@ -30,7 +31,7 @@ fn main() -> Result<()> {
             .encoder(Box::new(PatternEncoder::new("{l} - {m}\n")))
             .build("log/debug.log")?;
 
-        let config = Config::builder()
+        let config = log4rs::Config::builder()
             .appender(Appender::builder().build("logfile", Box::new(logfile)))
             .build(Root::builder().appender("logfile").build(LevelFilter::Info))?;
 
@@ -38,6 +39,8 @@ fn main() -> Result<()> {
 
         log::info!("Logger initialized");
     }
+
+    let config = Config::read_or_new_config();
 
     // Create separate entries for email and password
     let email_entry = Entry::new("DreamhackService", "dreamhack_email").unwrap();
@@ -86,7 +89,7 @@ fn main() -> Result<()> {
     // TUI initialization
     color_eyre::install()?;
     let terminal = ratatui::init();
-    let app_result = App::default().run(terminal, email_entry, password_entry);
+    let app_result = App::default().run(terminal, config, email_entry, password_entry);
     ratatui::restore();
     app_result
 }
