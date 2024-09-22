@@ -53,6 +53,12 @@ pub(crate) struct App {
     pub(crate) config: Option<crate::Config>,
     pub(crate) should_exit: bool,
     pub(crate) auth: Auth,
+    pub(crate) ui_state: UIState,
+    pub(crate) fs_state: FileSystemState,
+    pub(crate) vm_state: VMState,
+}
+
+pub(crate) struct UIState {
     pub(crate) popup_state: PopupState,
     pub(crate) cursor_state: CursorState,
     pub(crate) challenges: StateList<Challenge>,
@@ -62,9 +68,15 @@ pub(crate) struct App {
     pub(crate) search: Input,
     pub(crate) enter_flag: Input,
     pub(crate) wargame_details_index: usize,
+}
+
+pub(crate) struct FileSystemState {
     pub(crate) workdir: PathBuf,
-    pub(crate) fs_tree_state: TreeState<String>,
-    pub(crate) fs_tree_items: Vec<TreeItem<'static, String>>,
+    pub(crate) tree_state: TreeState<String>,
+    pub(crate) tree_items: Vec<TreeItem<'static, String>>,
+}
+
+pub(crate) struct VMState {
     pub(crate) vm_info: MachineInfo,
 }
 
@@ -74,25 +86,30 @@ impl Default for App {
             config: None,
             should_exit: false,
             auth: Auth::default(),
-            popup_state: PopupState::None,
-            // cursor_flag: false,
-            cursor_state: CursorState::Search,
-            challenges: StateList {
-                items: Vec::new(),
-                state: ListState::default(),
+            ui_state: UIState {
+                popup_state: PopupState::None,
+                cursor_state: CursorState::Search,
+                challenges: StateList {
+                    items: Vec::new(),
+                    state: ListState::default(),
+                },
+                options: Options::default(),
+                current_page: PageInfo::default(),
+                current_tab: Tabs::Search,
+                search: Input::default(),
+                enter_flag: Input::default(),
+                wargame_details_index: 0,
             },
-            options: Options::default(),
-            current_page: PageInfo::default(),
-            current_tab: Tabs::Search,
-            search: Input::default(),
-            enter_flag: Input::default(),
-            wargame_details_index: 0,
-            workdir: env::current_dir()
-                .context("Failed to get current directory")
-                .unwrap(),
-            fs_tree_state: TreeState::default(),
-            fs_tree_items: Vec::new(),
-            vm_info: MachineInfo::default(),
+            fs_state: FileSystemState {
+                workdir: env::current_dir()
+                    .context("Failed to get current directory")
+                    .unwrap(),
+                tree_state: TreeState::default(),
+                tree_items: Vec::new(),
+            },
+            vm_state: VMState {
+                vm_info: MachineInfo::default(),
+            },
         }
     }
 }
@@ -257,8 +274,9 @@ impl App {
     ) -> Result<()> {
         // let mut last_cursor_toggle = Instant::now();
         let mut request = RequestChallengeList::new();
-        (self.challenges.items, self.current_page) = request.send_request().unwrap_or_default();
-        self.options = Options {
+        (self.ui_state.challenges.items, self.ui_state.current_page) =
+            request.send_request().unwrap_or_default();
+        self.ui_state.options = Options {
             buttons: OPTIONS.0.into_iter().collect(),
             buttons_index: OPTIONS.2,
             items: OPTIONS.1,
@@ -286,7 +304,7 @@ impl App {
         };
 
         self.config = Some(config);
-        self.fs_tree_items = build_tree(&self.workdir)
+        self.fs_state.tree_items = build_tree(&self.fs_state.workdir)
             .context("Failed to build tree")
             .unwrap();
 
@@ -310,7 +328,7 @@ impl App {
 
         match key.code {
             keycode if keycode == KeyCode::Char('w') && key.modifiers == KeyModifiers::CONTROL => {
-                self.popup_state = PopupState::FsTreeView;
+                self.ui_state.popup_state = PopupState::FsTreeView;
             }
             KeyCode::Tab => {
                 self.next_tab();
@@ -318,54 +336,58 @@ impl App {
             _ => {}
         }
 
-        if self.popup_state == PopupState::None {
-            match self.current_tab {
+        if self.ui_state.popup_state == PopupState::None {
+            match self.ui_state.current_tab {
                 Tabs::Search => self.handle_search_input(key),
                 Tabs::Options => self.handle_options_input(key),
                 Tabs::WargameList => self.handle_wargame_list_input(key),
                 Tabs::WargameDetails => self.handle_wargame_details_input(key),
             }
-        } else if self.popup_state == PopupState::FsTreeView {
+        } else if self.ui_state.popup_state == PopupState::FsTreeView {
             self.handle_fs_tree_popup_input(key);
         }
     }
 
     fn handle_search_input(&mut self, key: KeyEvent) {
-        self.cursor_state = CursorState::Search;
+        self.ui_state.cursor_state = CursorState::Search;
         match key.code {
             KeyCode::Char('q') => self.should_exit = true,
             KeyCode::Enter => self.start_search(),
-            KeyCode::Char(to_insert) => self.search.enter_char(to_insert),
-            KeyCode::Backspace => self.search.delete_char(),
-            KeyCode::Left => self.search.move_cursor_left(),
-            KeyCode::Right => self.search.move_cursor_right(),
+            KeyCode::Char(to_insert) => self.ui_state.search.enter_char(to_insert),
+            KeyCode::Backspace => self.ui_state.search.delete_char(),
+            KeyCode::Left => self.ui_state.search.move_cursor_left(),
+            KeyCode::Right => self.ui_state.search.move_cursor_right(),
             _ => {}
         }
     }
 
     fn handle_options_input(&mut self, key: KeyEvent) {
-        if self.popup_state == PopupState::Options {
+        if self.ui_state.popup_state == PopupState::Options {
             match key.code {
                 KeyCode::Up => {
-                    if self.options.popup.items[self.options.buttons_index].index > 0 {
-                        self.options.popup.items[self.options.buttons_index].index -= 1;
+                    if self.ui_state.options.popup.items[self.ui_state.options.buttons_index].index
+                        > 0
+                    {
+                        self.ui_state.options.popup.items[self.ui_state.options.buttons_index]
+                            .index -= 1;
                     }
                 }
                 KeyCode::Down => {
-                    if self.options.popup.items[self.options.buttons_index].index
+                    if self.ui_state.options.popup.items[self.ui_state.options.buttons_index].index
                         < self.get_popup_items_length() - 1
                     {
-                        self.options.popup.items[self.options.buttons_index].index += 1;
+                        self.ui_state.options.popup.items[self.ui_state.options.buttons_index]
+                            .index += 1;
                     }
                 }
                 KeyCode::Enter => {
                     self.apply_popup_selection();
-                    self.popup_state = PopupState::None;
-                    self.options.popup.state = OptionsPopupState::None;
+                    self.ui_state.popup_state = PopupState::None;
+                    self.ui_state.options.popup.state = OptionsPopupState::None;
                 }
                 KeyCode::Esc | KeyCode::Char('q') => {
-                    self.popup_state = PopupState::None;
-                    self.options.popup.state = OptionsPopupState::None;
+                    self.ui_state.popup_state = PopupState::None;
+                    self.ui_state.options.popup.state = OptionsPopupState::None;
                 }
                 _ => {}
             }
@@ -373,32 +395,33 @@ impl App {
             match key.code {
                 KeyCode::Char('q') => self.should_exit = true,
                 KeyCode::Left => {
-                    if self.options.buttons_index > 0 {
-                        self.options.buttons[self.options.buttons_index]
+                    if self.ui_state.options.buttons_index > 0 {
+                        self.ui_state.options.buttons[self.ui_state.options.buttons_index]
                             .set_state(ButtonState::Normal);
-                        self.options.buttons_index -= 1;
-                        self.options.buttons[self.options.buttons_index]
+                        self.ui_state.options.buttons_index -= 1;
+                        self.ui_state.options.buttons[self.ui_state.options.buttons_index]
                             .set_state(ButtonState::Selected);
                     }
                 }
                 KeyCode::Right => {
-                    if self.options.buttons_index < self.options.buttons.len() - 1 {
-                        self.options.buttons[self.options.buttons_index]
+                    if self.ui_state.options.buttons_index < self.ui_state.options.buttons.len() - 1
+                    {
+                        self.ui_state.options.buttons[self.ui_state.options.buttons_index]
                             .set_state(ButtonState::Normal);
-                        self.options.buttons_index += 1;
-                        self.options.buttons[self.options.buttons_index]
+                        self.ui_state.options.buttons_index += 1;
+                        self.ui_state.options.buttons[self.ui_state.options.buttons_index]
                             .set_state(ButtonState::Selected);
                     }
                 }
                 KeyCode::Enter => {
-                    match self.options.buttons_index {
-                        0 => self.options.popup.state = OptionsPopupState::CategoryPopup,
-                        1 => self.options.popup.state = OptionsPopupState::DifficultyPopup,
-                        2 => self.options.popup.state = OptionsPopupState::StatusPopup,
-                        3 => self.options.popup.state = OptionsPopupState::OrderPopup,
+                    match self.ui_state.options.buttons_index {
+                        0 => self.ui_state.options.popup.state = OptionsPopupState::CategoryPopup,
+                        1 => self.ui_state.options.popup.state = OptionsPopupState::DifficultyPopup,
+                        2 => self.ui_state.options.popup.state = OptionsPopupState::StatusPopup,
+                        3 => self.ui_state.options.popup.state = OptionsPopupState::OrderPopup,
                         _ => {}
                     }
-                    self.popup_state = PopupState::Options;
+                    self.ui_state.popup_state = PopupState::Options;
                 }
                 _ => {}
             }
@@ -408,11 +431,11 @@ impl App {
     fn handle_wargame_list_input(&mut self, key: KeyEvent) {
         match key.code {
             KeyCode::Char('q') => self.should_exit = true,
-            KeyCode::Char('h') | KeyCode::Esc => self.challenges.select_none(),
-            KeyCode::Char('j') | KeyCode::Down => self.challenges.select_next(),
-            KeyCode::Char('k') | KeyCode::Up => self.challenges.select_previous(),
-            KeyCode::Char('g') | KeyCode::Home => self.challenges.select_first(),
-            KeyCode::Char('G') | KeyCode::End => self.challenges.select_last(),
+            KeyCode::Char('h') | KeyCode::Esc => self.ui_state.challenges.select_none(),
+            KeyCode::Char('j') | KeyCode::Down => self.ui_state.challenges.select_next(),
+            KeyCode::Char('k') | KeyCode::Up => self.ui_state.challenges.select_previous(),
+            KeyCode::Char('g') | KeyCode::Home => self.ui_state.challenges.select_first(),
+            KeyCode::Char('G') | KeyCode::End => self.ui_state.challenges.select_last(),
             KeyCode::Char('l') | KeyCode::Right => self.next_page(),
             KeyCode::Char('u') | KeyCode::Left => self.previous_page(),
             _ => {}
@@ -423,41 +446,42 @@ impl App {
         match key.code {
             KeyCode::Char('q') => self.should_exit = true,
             KeyCode::Char('k') | KeyCode::Up => {
-                if self.wargame_details_index > 0 {
-                    self.wargame_details_index -= 1;
+                if self.ui_state.wargame_details_index > 0 {
+                    self.ui_state.wargame_details_index -= 1;
                 }
             }
             KeyCode::Char('j') | KeyCode::Down => {
-                if self.wargame_details_index < 2 {
-                    self.wargame_details_index += 1;
+                if self.ui_state.wargame_details_index < 2 {
+                    self.ui_state.wargame_details_index += 1;
                 }
             }
             _ => {}
         }
 
-        match self.wargame_details_index {
+        match self.ui_state.wargame_details_index {
             0 => {
-                self.cursor_state = CursorState::EnterFlag;
+                self.ui_state.cursor_state = CursorState::EnterFlag;
                 match key.code {
                     KeyCode::Enter => {}
-                    KeyCode::Char(to_insert) => self.enter_flag.enter_char(to_insert),
-                    KeyCode::Backspace => self.enter_flag.delete_char(),
-                    KeyCode::Left => self.enter_flag.move_cursor_left(),
-                    KeyCode::Right => self.enter_flag.move_cursor_right(),
+                    KeyCode::Char(to_insert) => self.ui_state.enter_flag.enter_char(to_insert),
+                    KeyCode::Backspace => self.ui_state.enter_flag.delete_char(),
+                    KeyCode::Left => self.ui_state.enter_flag.move_cursor_left(),
+                    KeyCode::Right => self.ui_state.enter_flag.move_cursor_right(),
                     _ => {}
                 }
             }
             1 => {
                 if key.code == KeyCode::Enter {
-                    if let Some(selected_item) = self.challenges.state.selected() {
+                    if let Some(selected_item) = self.ui_state.challenges.state.selected() {
                         let workdir = self
+                            .fs_state
                             .workdir
                             .to_str()
                             .context("Failed to get workdir")
                             .unwrap()
                             .to_owned();
 
-                        let repository = self.challenges.items[selected_item]
+                        let repository = self.ui_state.challenges.items[selected_item]
                             .get_metadata()
                             .get_repository()
                             .to_owned();
@@ -485,11 +509,11 @@ impl App {
             }
             2 => {
                 if key.code == KeyCode::Enter {
-                    if let Some(selected_item) = self.challenges.state.selected() {
-                        if self.challenges.items[selected_item].create_vm(&self.auth) {
+                    if let Some(selected_item) = self.ui_state.challenges.state.selected() {
+                        if self.ui_state.challenges.items[selected_item].create_vm(&self.auth) {
                             // VM created
-                            self.vm_info =
-                                self.challenges.items[selected_item].get_vm_info(&self.auth);
+                            self.vm_state.vm_info = self.ui_state.challenges.items[selected_item]
+                                .get_vm_info(&self.auth);
                         }
                     }
                 }
@@ -501,13 +525,14 @@ impl App {
     fn handle_fs_tree_popup_input(&mut self, key: KeyEvent) {
         match key.code {
             KeyCode::Char('q') => {
-                self.popup_state = PopupState::None;
+                self.ui_state.popup_state = PopupState::None;
                 false
             }
-            KeyCode::Char('\n' | ' ') => self.fs_tree_state.toggle_selected(),
+            KeyCode::Char('\n' | ' ') => self.fs_state.tree_state.toggle_selected(),
             KeyCode::Enter => {
                 let selected_workdir = self
-                    .fs_tree_state
+                    .fs_state
+                    .tree_state
                     .selected()
                     .first()
                     .context("Failed to get selected item")
@@ -516,22 +541,22 @@ impl App {
                 #[cfg(debug_assertions)]
                 log::info!("Selected workdir: {}", selected_workdir);
 
-                self.workdir = PathBuf::from(selected_workdir);
-                self.fs_tree_items = build_tree(&self.workdir)
+                self.fs_state.workdir = PathBuf::from(selected_workdir);
+                self.fs_state.tree_items = build_tree(&self.fs_state.workdir)
                     .context("Failed to build tree")
                     .unwrap();
-                self.popup_state = PopupState::None;
+                self.ui_state.popup_state = PopupState::None;
                 true
             }
-            KeyCode::Left => self.fs_tree_state.key_left(),
-            KeyCode::Right => self.fs_tree_state.key_right(),
-            KeyCode::Down => self.fs_tree_state.key_down(),
-            KeyCode::Up => self.fs_tree_state.key_up(),
-            KeyCode::Esc => self.fs_tree_state.select(Vec::new()),
-            KeyCode::Home => self.fs_tree_state.select_first(),
-            KeyCode::End => self.fs_tree_state.select_last(),
-            KeyCode::PageDown => self.fs_tree_state.scroll_down(3),
-            KeyCode::PageUp => self.fs_tree_state.scroll_up(3),
+            KeyCode::Left => self.fs_state.tree_state.key_left(),
+            KeyCode::Right => self.fs_state.tree_state.key_right(),
+            KeyCode::Down => self.fs_state.tree_state.key_down(),
+            KeyCode::Up => self.fs_state.tree_state.key_up(),
+            KeyCode::Esc => self.fs_state.tree_state.select(Vec::new()),
+            KeyCode::Home => self.fs_state.tree_state.select_first(),
+            KeyCode::End => self.fs_state.tree_state.select_last(),
+            KeyCode::PageDown => self.fs_state.tree_state.scroll_down(3),
+            KeyCode::PageUp => self.fs_state.tree_state.scroll_up(3),
             _ => false,
         };
     }
@@ -564,7 +589,7 @@ impl App {
         self.render_list(list_area, frame);
         self.render_selected_item(item_area, frame);
 
-        match self.popup_state {
+        match self.ui_state.popup_state {
             PopupState::Options => self.render_options_popup(frame),
             PopupState::FsTreeView => self.render_fs_tree_view_popup(frame),
             PopupState::None => {}
@@ -574,52 +599,56 @@ impl App {
 
 impl App {
     fn next_page(&mut self) {
-        self.current_page.next_page();
+        self.ui_state.current_page.next_page();
 
         let mut request = RequestChallengeList::new();
-        request.set_page(self.current_page.get_page_idx());
-        (self.challenges.items, self.current_page) = request.send_request().unwrap();
+        request.set_page(self.ui_state.current_page.get_page_idx());
+        (self.ui_state.challenges.items, self.ui_state.current_page) =
+            request.send_request().unwrap();
     }
 
     fn previous_page(&mut self) {
-        self.current_page.previous_page();
+        self.ui_state.current_page.previous_page();
 
         let mut request = RequestChallengeList::new();
-        request.set_page(self.current_page.get_page_idx());
-        (self.challenges.items, self.current_page) = request.send_request().unwrap();
+        request.set_page(self.ui_state.current_page.get_page_idx());
+        (self.ui_state.challenges.items, self.ui_state.current_page) =
+            request.send_request().unwrap();
     }
 }
 
 impl App {
     fn next_tab(&mut self) {
-        match self.current_tab {
-            Tabs::Search => self.current_tab = Tabs::Options,
-            Tabs::Options => self.current_tab = Tabs::WargameList,
-            Tabs::WargameList => self.current_tab = Tabs::WargameDetails,
-            Tabs::WargameDetails => self.current_tab = Tabs::Search,
+        match self.ui_state.current_tab {
+            Tabs::Search => self.ui_state.current_tab = Tabs::Options,
+            Tabs::Options => self.ui_state.current_tab = Tabs::WargameList,
+            Tabs::WargameList => self.ui_state.current_tab = Tabs::WargameDetails,
+            Tabs::WargameDetails => self.ui_state.current_tab = Tabs::Search,
         }
     }
 }
 
 impl App {
     fn apply_popup_selection(&mut self) {
-        match self.options.popup.state {
+        match self.ui_state.options.popup.state {
             OptionsPopupState::CategoryPopup => {
-                self.options.items.cat =
-                    Category::from_index(self.options.popup.items[self.options.buttons_index].index)
+                self.ui_state.options.items.cat = Category::from_index(
+                    self.ui_state.options.popup.items[self.ui_state.options.buttons_index].index,
+                )
             }
             OptionsPopupState::DifficultyPopup => {
-                self.options.items.diff = Difficulty::from_index(
-                    self.options.popup.items[self.options.buttons_index].index,
+                self.ui_state.options.items.diff = Difficulty::from_index(
+                    self.ui_state.options.popup.items[self.ui_state.options.buttons_index].index,
                 )
             }
             OptionsPopupState::StatusPopup => {
-                self.options.items.status =
-                    Status::from_index(self.options.popup.items[self.options.buttons_index].index)
+                self.ui_state.options.items.status = Status::from_index(
+                    self.ui_state.options.popup.items[self.ui_state.options.buttons_index].index,
+                )
             }
             OptionsPopupState::OrderPopup => {
-                self.options.items.order = Orderings::from_index(
-                    self.options.popup.items[self.options.buttons_index].index,
+                self.ui_state.options.items.order = Orderings::from_index(
+                    self.ui_state.options.popup.items[self.ui_state.options.buttons_index].index,
                 )
             }
             OptionsPopupState::None => {}
@@ -627,7 +656,7 @@ impl App {
     }
 
     fn get_popup_items_length(&self) -> usize {
-        match self.options.popup.state {
+        match self.ui_state.options.popup.state {
             OptionsPopupState::CategoryPopup => Category::variants().len(),
             OptionsPopupState::DifficultyPopup => Difficulty::variants().len(),
             OptionsPopupState::StatusPopup => Status::variants().len(),
@@ -647,23 +676,23 @@ impl<'a> From<&'a Challenge> for ListItem<'a> {
 impl App {
     fn start_search(&mut self) {
         let mut request = RequestChallengeList::new();
-        request.set_search(self.search.input.clone());
-        request.set_category(self.options.items.cat);
-        request.set_difficulty(self.options.items.diff);
-        request.set_status(self.options.items.status);
-        request.set_ordering(self.options.items.order);
+        request.set_search(self.ui_state.search.input.clone());
+        request.set_category(self.ui_state.options.items.cat);
+        request.set_difficulty(self.ui_state.options.items.diff);
+        request.set_status(self.ui_state.options.items.status);
+        request.set_ordering(self.ui_state.options.items.order);
 
-        (self.challenges.items, self.current_page) = request
+        (self.ui_state.challenges.items, self.ui_state.current_page) = request
             .send_request()
             .context("Failed to send request")
             .unwrap();
 
-        self.search.reset_cursor();
+        self.ui_state.search.reset_cursor();
     }
 
     fn start_download(&mut self, path: &str) {
-        if let Some(selected_index) = self.challenges.state.selected() {
-            let challenge = &self.challenges.items[selected_index];
+        if let Some(selected_index) = self.ui_state.challenges.state.selected() {
+            let challenge = &self.ui_state.challenges.items[selected_index];
             let challenge_data = challenge.download_challenge();
             let f = File::create_new(PathBuf::from(path));
 

@@ -43,14 +43,14 @@ impl App {
             .borders(Borders::ALL)
             .border_set(symbols::border::ROUNDED);
 
-        Paragraph::new(self.search.input.as_str())
+        Paragraph::new(self.ui_state.search.input.as_str())
             .block(block)
             .fg(TEXT_FG_COLOR)
             .render(area, frame.buffer_mut());
 
-        if self.cursor_state == CursorState::Search {
+        if self.ui_state.cursor_state == CursorState::Search {
             frame.set_cursor_position(Position::new(
-                area.x + self.search.get_character_index() as u16 + 1,
+                area.x + self.ui_state.search.get_character_index() as u16 + 1,
                 area.y + 1,
             ));
         }
@@ -65,11 +65,11 @@ impl App {
         ])
         .areas(area);
 
-        for (i, &button) in self.options.get_buttons().iter().enumerate() {
+        for (i, &button) in self.ui_state.options.get_buttons().iter().enumerate() {
             let block = Block::default()
                 .borders(Borders::ALL)
                 .style(
-                    Style::default().fg(if self.options.get_selected_index() == i {
+                    Style::default().fg(if self.ui_state.options.get_selected_index() == i {
                         Color::Yellow
                     } else {
                         Color::White
@@ -93,7 +93,7 @@ impl App {
             .style(Style::default().bg(Color::DarkGray));
         frame.render_widget(block, popup_rect);
 
-        match self.options.get_popup().get_state() {
+        match self.ui_state.options.get_popup().get_state() {
             OptionsPopupState::CategoryPopup => {
                 self.popup_category(popup_rect, frame);
             }
@@ -119,7 +119,7 @@ impl App {
         ])
         .areas(area);
 
-        let items = self.options.get_items();
+        let items = self.ui_state.options.get_items();
         let values = [
             Paragraph::new(items.get_category().to_string())
                 .style(Style::new().bold())
@@ -141,7 +141,7 @@ impl App {
     }
 
     pub(crate) fn render_current_tab(&self, area: Rect, frame: &mut Frame) {
-        let tab = match self.current_tab {
+        let tab = match self.ui_state.current_tab {
             crate::termui::Tabs::Search => "Search",
             crate::termui::Tabs::Options => "Options",
             crate::termui::Tabs::WargameList => "Wargame List",
@@ -163,13 +163,14 @@ impl App {
             .border_style(CREAMHACK_HEADER_STYLE)
             .bg(NORMAL_ROW_BG);
 
-        if let Some(selected_index) = self.challenges.state.selected() {
-            if selected_index >= self.challenges.items.len() {
-                self.challenges.select_none();
+        if let Some(selected_index) = self.ui_state.challenges.state.selected() {
+            if selected_index >= self.ui_state.challenges.items.len() {
+                self.ui_state.challenges.select_none();
             }
         }
 
         let items: Vec<ListItem> = self
+            .ui_state
             .challenges
             .items
             .iter()
@@ -187,7 +188,7 @@ impl App {
             .highlight_spacing(HighlightSpacing::Always);
 
         // frame을 바로 전달
-        frame.render_stateful_widget(list, area, &mut self.challenges.state);
+        frame.render_stateful_widget(list, area, &mut self.ui_state.challenges.state);
     }
 
     pub(crate) fn render_selected_item(&self, area: Rect, frame: &mut Frame) {
@@ -204,8 +205,8 @@ impl App {
         let buttons_area =
             Layout::vertical([Constraint::Length(3), Constraint::Length(3)]).split(buttons_area);
 
-        let info = if let Some(i) = self.challenges.state.selected() {
-            format!("{}", self.challenges.items[i].to_detailed_info())
+        let info = if let Some(i) = self.ui_state.challenges.state.selected() {
+            format!("{}", self.ui_state.challenges.items[i].to_detailed_info())
         } else {
             "Nothing selected...".to_string()
         };
@@ -229,15 +230,15 @@ impl App {
             .borders(Borders::ALL)
             .border_set(symbols::border::ROUNDED);
 
-        Paragraph::new(self.enter_flag.input.as_str())
+        Paragraph::new(self.ui_state.enter_flag.input.as_str())
             .block(enter_flag_block)
             .fg(TEXT_FG_COLOR)
             .bg(NORMAL_ROW_BG)
             .render(enter_flag_area, frame.buffer_mut());
 
-        if self.cursor_state == CursorState::EnterFlag {
+        if self.ui_state.cursor_state == CursorState::EnterFlag {
             frame.set_cursor_position(Position::new(
-                enter_flag_area.x + self.enter_flag.get_character_index() as u16 + 1,
+                enter_flag_area.x + self.ui_state.enter_flag.get_character_index() as u16 + 1,
                 enter_flag_area.y + 1,
             ));
         }
@@ -247,7 +248,7 @@ impl App {
             let block = Block::default()
                 .borders(Borders::ALL)
                 .style(
-                    Style::default().fg(if self.wargame_details_index == (i + 1) {
+                    Style::default().fg(if self.ui_state.wargame_details_index == (i + 1) {
                         Color::Yellow
                     } else {
                         Color::White
@@ -260,7 +261,7 @@ impl App {
             frame.render_widget(paragraph, buttons_area[i]);
         }
 
-        match self.vm_info.get_network_info() {
+        match self.vm_state.vm_info.get_network_info() {
             Some(network_info) => {
                 Paragraph::new(Text::from(vec![
                     Line::raw(format!(
@@ -291,7 +292,7 @@ impl App {
         let popup_rect = popup_area(frame.area(), 50, 50);
         frame.render_widget(Clear, popup_rect);
 
-        let widget = Tree::new(self.fs_tree_items.as_slice())
+        let widget = Tree::new(self.fs_state.tree_items.as_slice())
             .expect("all item identifiers are unique")
             .block(Block::bordered().title("Select a directory"))
             .experimental_scrollbar(Some(
@@ -308,7 +309,7 @@ impl App {
             )
             .highlight_symbol(">> ");
 
-        frame.render_stateful_widget(widget, popup_rect, &mut self.fs_tree_state);
+        frame.render_stateful_widget(widget, popup_rect, &mut self.fs_state.tree_state);
     }
 }
 
@@ -332,10 +333,10 @@ impl PopupOptions for App {
 
         for (i, item) in T::variants().iter().enumerate() {
             let style = if T::from_index(
-                self.options
+                self.ui_state.options
                     .get_popup()
                     .get_items()
-                    .get(self.options.get_buttons_index())
+                    .get(self.ui_state.options.get_buttons_index())
                     .expect("Failed to get the selected index")
                     .get_index(),
             ) == *item
