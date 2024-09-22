@@ -4,6 +4,7 @@ use crate::{
     custom_widgets::{button::*, input::Input, popup::PopupItem, state_list::*},
     dreamhack::{auth::Auth, challenge::*, options::*, vm_info::MachineInfo},
     fs_tree::build_tree,
+    utils,
 };
 use anyhow::Context;
 use color_eyre::Result;
@@ -449,19 +450,35 @@ impl App {
             1 => {
                 if key.code == KeyCode::Enter {
                     if let Some(selected_item) = self.challenges.state.selected() {
-                        self.start_download(&format!(
-                            "{}/{}.zip",
-                            self.workdir
-                                .to_str()
-                                .context("Failed to get workdir")
-                                .unwrap(),
-                            self.challenges.items[selected_item]
-                                .get_metadata()
-                                .get_repository()
-                        ));
+                        let workdir = self
+                            .workdir
+                            .to_str()
+                            .context("Failed to get workdir")
+                            .unwrap()
+                            .to_owned();
+
+                        let repository = self.challenges.items[selected_item]
+                            .get_metadata()
+                            .get_repository()
+                            .to_owned();
+
+                        let file_path = format!("{}/{}.zip", workdir, repository);
+
+                        self.start_download(&file_path);
 
                         if self.config.as_ref().unwrap().extract_chall_file {
-                            unimplemented!("Extracting challenge file is not implemented yet");
+                            utils::file_extractor::extract_file(
+                                PathBuf::from(&file_path),
+                                PathBuf::from(&workdir),
+                                &repository,
+                            )
+                            .unwrap();
+                        }
+
+                        if !self.config.as_ref().unwrap().keep_chall_file {
+                            std::fs::remove_file(file_path)
+                                .context("Failed to remove file")
+                                .unwrap();
                         }
                     }
                 }
@@ -495,6 +512,9 @@ impl App {
                     .first()
                     .context("Failed to get selected item")
                     .unwrap();
+
+                #[cfg(debug_assertions)]
+                log::info!("Selected workdir: {}", selected_workdir);
 
                 self.workdir = PathBuf::from(selected_workdir);
                 self.fs_tree_items = build_tree(&self.workdir)
