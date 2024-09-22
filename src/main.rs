@@ -7,6 +7,7 @@ mod dreamhack;
 mod fs_tree;
 mod render;
 mod termui;
+mod utils;
 
 use color_eyre::Result;
 use config::Config;

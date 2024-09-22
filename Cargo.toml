@@ -13,7 +13,7 @@ strum = { version = "0.26.3", features = ["derive"] }
 tokio = { version = "1.40.0", features = ["full", "tokio-macros"] }
 tokio-macros = "2.4.0"
 # Utils
-# zip = "2.2.0"
+zip = "2.2.0"
 # Ui
 ratatui = "0.28.1"
 tui-tree-widget = "0.22.0"
