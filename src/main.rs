@@ -6,11 +6,19 @@ mod custom_widgets;
 mod dreamhack;
 mod fs_tree;
 mod render;
+mod event_handler;
 mod termui;
 mod utils;
 
+use std::io;
+
 use color_eyre::Result;
 use config::Config;
+use crossterm::{
+    event::{DisableMouseCapture, EnableMouseCapture},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
 use dialoguer::Input;
 use keyring::Entry;
 #[cfg(debug_assertions)]
@@ -88,9 +96,20 @@ fn main() -> Result<()> {
     println!("Password is securely stored and retrieved.");
 
     // TUI initialization
+    // setup terminal
     color_eyre::install()?;
-    let terminal = ratatui::init();
-    let app_result = App::default().run(terminal, config, email_entry, password_entry);
-    ratatui::restore();
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    let mut terminal = ratatui::init();
+    let app_result = App::default().run(&mut terminal, config, email_entry, password_entry);
+    // restore terminal
+    disable_raw_mode()?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
+    terminal.show_cursor()?;
     app_result
 }

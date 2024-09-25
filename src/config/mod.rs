@@ -6,6 +6,7 @@ use std::path::PathBuf;
 pub struct Config {
     pub extract_chall_file: bool,
     pub keep_chall_file: bool,
+    pub experimental_features: bool,
 }
 
 // experimental-features
@@ -39,6 +40,7 @@ impl Config {
                 let mut config = Config {
                     extract_chall_file: true,
                     keep_chall_file: true,
+                    experimental_features: false,
                 };
 
                 config.validate_config(); // Ensure `keep_chall_file` is valid

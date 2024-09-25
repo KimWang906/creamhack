@@ -29,7 +29,7 @@ pub mod button {
 pub mod state_list {
     use ratatui::widgets::ListState;
 
-    #[derive(Debug, PartialEq, Eq)]
+    #[derive(Debug, PartialEq, Eq, Clone)]
     pub struct StateList<T: Sized> {
         pub(crate) items: Vec<T>,
         pub(crate) state: ListState,

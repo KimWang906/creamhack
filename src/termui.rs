@@ -1,4 +1,4 @@
-use std::{env, fs::File, io::Write, path::PathBuf};
+use std::{env, fs::File, io::Write, path::PathBuf, sync::Once};
 
 use crate::{
     custom_widgets::{button::*, input::Input, popup::PopupItem, state_list::*},
@@ -52,10 +52,16 @@ const OPTIONS: ([Button; 4], OptionsData, usize) = (
 pub(crate) struct App {
     pub(crate) config: Option<crate::Config>,
     pub(crate) should_exit: bool,
+    pub(crate) events: Events,
     pub(crate) auth: Auth,
     pub(crate) ui_state: UIState,
     pub(crate) fs_state: FileSystemState,
     pub(crate) vm_state: VMState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct Events {
+    pub(crate) mouse: Option<MouseEvent>,
 }
 
 pub(crate) struct UIState {
@@ -84,6 +90,7 @@ impl Default for App {
     fn default() -> Self {
         Self {
             config: None,
+            events: Events::default(),
             should_exit: false,
             auth: Auth::default(),
             ui_state: UIState {
@@ -165,13 +172,19 @@ pub(crate) enum PopupState {
     FsTreeView,
 }
 
-#[derive(Default, PartialEq, Eq)]
+#[derive(Default, PartialEq, Eq, Debug)]
 pub(crate) enum Tabs {
     #[default]
     Search,
     Options,
     WargameList,
     WargameDetails,
+}
+
+impl Tabs {
+    pub fn set_tab(&mut self, tab: Tabs) {
+        *self = tab;
+    }
 }
 
 impl Default for OptionsData {
@@ -192,6 +205,10 @@ impl OptionInfo {
         self.index
     }
 
+    pub(crate) fn set_index(&mut self, index: usize) {
+        self.index = index;
+    }
+
     pub(crate) fn get_size(&self) -> usize {
         self.size
     }
@@ -202,8 +219,16 @@ impl OptionsPopup {
         &self.items
     }
 
+    pub(crate) fn get_mut_items(&mut self) -> &mut Vec<OptionInfo> {
+        &mut self.items
+    }
+
     pub(crate) fn get_state(&self) -> OptionsPopupState {
         self.state
+    }
+
+    pub(crate) fn set_state(&mut self, state: OptionsPopupState) {
+        self.state = state;
     }
 }
 
@@ -230,8 +255,22 @@ impl Options {
         &self.buttons
     }
 
+    pub(crate) fn get_mut_buttons(&mut self) -> &mut Vec<Button> {
+        &mut self.buttons
+    }
+
+    pub(crate) fn clear_button_state(&mut self) {
+        for btn in self.buttons.iter_mut() {
+            btn.set_state(ButtonState::Normal);
+        }
+    }
+
     pub(crate) fn get_buttons_index(&self) -> usize {
         self.buttons_index
+    }
+
+    pub(crate) fn set_buttons_index(&mut self, index: usize) {
+        self.buttons_index = index;
     }
 
     pub(crate) fn get_items(&self) -> &OptionsData {
@@ -240,6 +279,10 @@ impl Options {
 
     pub(crate) fn get_popup(&self) -> &OptionsPopup {
         &self.popup
+    }
+
+    pub(crate) fn get_mut_popup(&mut self) -> &mut OptionsPopup {
+        &mut self.popup
     }
 
     pub(crate) fn get_selected_index(&self) -> usize {
@@ -267,7 +310,7 @@ impl Default for Options {
 impl App {
     pub fn run(
         mut self,
-        mut terminal: DefaultTerminal,
+        terminal: &mut DefaultTerminal,
         config: crate::Config,
         email_entry: Entry,
         password_entry: Entry,
@@ -314,251 +357,27 @@ impl App {
 
         while !self.should_exit {
             terminal.draw(|frame| self.draw(frame))?;
-            if let Event::Key(key) = event::read()? {
-                self.handle_key(key);
-            };
-        }
-        Ok(())
-    }
 
-    fn handle_key(&mut self, key: KeyEvent) {
-        if key.kind != KeyEventKind::Press {
-            return;
-        }
-
-        match key.code {
-            keycode if keycode == KeyCode::Char('w') && key.modifiers == KeyModifiers::CONTROL => {
-                self.ui_state.popup_state = PopupState::FsTreeView;
-            }
-            KeyCode::Tab => {
-                self.next_tab();
-            }
-            _ => {}
-        }
-
-        if self.ui_state.popup_state == PopupState::None {
-            match self.ui_state.current_tab {
-                Tabs::Search => self.handle_search_input(key),
-                Tabs::Options => self.handle_options_input(key),
-                Tabs::WargameList => self.handle_wargame_list_input(key),
-                Tabs::WargameDetails => self.handle_wargame_details_input(key),
-            }
-        } else if self.ui_state.popup_state == PopupState::FsTreeView {
-            self.handle_fs_tree_popup_input(key);
-        }
-    }
-
-    fn handle_search_input(&mut self, key: KeyEvent) {
-        self.ui_state.cursor_state = CursorState::Search;
-        match key.code {
-            KeyCode::Char('q') => self.should_exit = true,
-            KeyCode::Enter => self.start_search(),
-            KeyCode::Char(to_insert) => self.ui_state.search.enter_char(to_insert),
-            KeyCode::Backspace => self.ui_state.search.delete_char(),
-            KeyCode::Left => self.ui_state.search.move_cursor_left(),
-            KeyCode::Right => self.ui_state.search.move_cursor_right(),
-            _ => {}
-        }
-    }
-
-    fn handle_options_input(&mut self, key: KeyEvent) {
-        if self.ui_state.popup_state == PopupState::Options {
-            match key.code {
-                KeyCode::Up => {
-                    if self.ui_state.options.popup.items[self.ui_state.options.buttons_index].index
-                        > 0
-                    {
-                        self.ui_state.options.popup.items[self.ui_state.options.buttons_index]
-                            .index -= 1;
-                    }
-                }
-                KeyCode::Down => {
-                    if self.ui_state.options.popup.items[self.ui_state.options.buttons_index].index
-                        < self.get_popup_items_length() - 1
-                    {
-                        self.ui_state.options.popup.items[self.ui_state.options.buttons_index]
-                            .index += 1;
-                    }
-                }
-                KeyCode::Enter => {
-                    self.apply_popup_selection();
-                    self.ui_state.popup_state = PopupState::None;
-                    self.ui_state.options.popup.state = OptionsPopupState::None;
-                }
-                KeyCode::Esc | KeyCode::Char('q') => {
-                    self.ui_state.popup_state = PopupState::None;
-                    self.ui_state.options.popup.state = OptionsPopupState::None;
-                }
-                _ => {}
-            }
-        } else {
-            match key.code {
-                KeyCode::Char('q') => self.should_exit = true,
-                KeyCode::Left => {
-                    if self.ui_state.options.buttons_index > 0 {
-                        self.ui_state.options.buttons[self.ui_state.options.buttons_index]
-                            .set_state(ButtonState::Normal);
-                        self.ui_state.options.buttons_index -= 1;
-                        self.ui_state.options.buttons[self.ui_state.options.buttons_index]
-                            .set_state(ButtonState::Selected);
-                    }
-                }
-                KeyCode::Right => {
-                    if self.ui_state.options.buttons_index < self.ui_state.options.buttons.len() - 1
-                    {
-                        self.ui_state.options.buttons[self.ui_state.options.buttons_index]
-                            .set_state(ButtonState::Normal);
-                        self.ui_state.options.buttons_index += 1;
-                        self.ui_state.options.buttons[self.ui_state.options.buttons_index]
-                            .set_state(ButtonState::Selected);
-                    }
-                }
-                KeyCode::Enter => {
-                    match self.ui_state.options.buttons_index {
-                        0 => self.ui_state.options.popup.state = OptionsPopupState::CategoryPopup,
-                        1 => self.ui_state.options.popup.state = OptionsPopupState::DifficultyPopup,
-                        2 => self.ui_state.options.popup.state = OptionsPopupState::StatusPopup,
-                        3 => self.ui_state.options.popup.state = OptionsPopupState::OrderPopup,
+            match event::read()? {
+                Event::Key(key) => {
+                    match (key.code, key.modifiers) {
+                        (KeyCode::Tab, _) => self.next_tab(),
+                        (KeyCode::Char('w'), KeyModifiers::CONTROL)
+                            if self.ui_state.popup_state == PopupState::None =>
+                        {
+                            self.ui_state.popup_state = PopupState::FsTreeView;
+                        }
                         _ => {}
                     }
-                    self.ui_state.popup_state = PopupState::Options;
+                    self.handle_key(key)
+                }
+                Event::Mouse(mouse) if self.config.as_ref().unwrap().experimental_features => {
+                    self.events.mouse = Some(mouse);
                 }
                 _ => {}
             }
         }
-    }
-
-    fn handle_wargame_list_input(&mut self, key: KeyEvent) {
-        match key.code {
-            KeyCode::Char('q') => self.should_exit = true,
-            KeyCode::Char('h') | KeyCode::Esc => self.ui_state.challenges.select_none(),
-            KeyCode::Char('j') | KeyCode::Down => self.ui_state.challenges.select_next(),
-            KeyCode::Char('k') | KeyCode::Up => self.ui_state.challenges.select_previous(),
-            KeyCode::Char('g') | KeyCode::Home => self.ui_state.challenges.select_first(),
-            KeyCode::Char('G') | KeyCode::End => self.ui_state.challenges.select_last(),
-            KeyCode::Char('l') | KeyCode::Right => self.next_page(),
-            KeyCode::Char('u') | KeyCode::Left => self.previous_page(),
-            _ => {}
-        }
-    }
-
-    fn handle_wargame_details_input(&mut self, key: KeyEvent) {
-        match key.code {
-            KeyCode::Char('q') => self.should_exit = true,
-            KeyCode::Char('k') | KeyCode::Up => {
-                if self.ui_state.wargame_details_index > 0 {
-                    self.ui_state.wargame_details_index -= 1;
-                }
-            }
-            KeyCode::Char('j') | KeyCode::Down => {
-                if self.ui_state.wargame_details_index < 2 {
-                    self.ui_state.wargame_details_index += 1;
-                }
-            }
-            _ => {}
-        }
-
-        match self.ui_state.wargame_details_index {
-            0 => {
-                self.ui_state.cursor_state = CursorState::EnterFlag;
-                match key.code {
-                    KeyCode::Enter => {}
-                    KeyCode::Char(to_insert) => self.ui_state.enter_flag.enter_char(to_insert),
-                    KeyCode::Backspace => self.ui_state.enter_flag.delete_char(),
-                    KeyCode::Left => self.ui_state.enter_flag.move_cursor_left(),
-                    KeyCode::Right => self.ui_state.enter_flag.move_cursor_right(),
-                    _ => {}
-                }
-            }
-            1 => {
-                if key.code == KeyCode::Enter {
-                    if let Some(selected_item) = self.ui_state.challenges.state.selected() {
-                        let workdir = self
-                            .fs_state
-                            .workdir
-                            .to_str()
-                            .context("Failed to get workdir")
-                            .unwrap()
-                            .to_owned();
-
-                        let repository = self.ui_state.challenges.items[selected_item]
-                            .get_metadata()
-                            .get_repository()
-                            .to_owned();
-
-                        let file_path = format!("{}/{}.zip", workdir, repository);
-
-                        self.start_download(&file_path);
-
-                        if self.config.as_ref().unwrap().extract_chall_file {
-                            utils::file_extractor::extract_file(
-                                PathBuf::from(&file_path),
-                                PathBuf::from(&workdir),
-                                &repository,
-                            )
-                            .unwrap();
-                        }
-
-                        if !self.config.as_ref().unwrap().keep_chall_file {
-                            std::fs::remove_file(file_path)
-                                .context("Failed to remove file")
-                                .unwrap();
-                        }
-                    }
-                }
-            }
-            2 => {
-                if key.code == KeyCode::Enter {
-                    if let Some(selected_item) = self.ui_state.challenges.state.selected() {
-                        if self.ui_state.challenges.items[selected_item].create_vm(&self.auth) {
-                            // VM created
-                            self.vm_state.vm_info = self.ui_state.challenges.items[selected_item]
-                                .get_vm_info(&self.auth);
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    fn handle_fs_tree_popup_input(&mut self, key: KeyEvent) {
-        match key.code {
-            KeyCode::Char('q') => {
-                self.ui_state.popup_state = PopupState::None;
-                false
-            }
-            KeyCode::Char('\n' | ' ') => self.fs_state.tree_state.toggle_selected(),
-            KeyCode::Enter => {
-                let selected_workdir = self
-                    .fs_state
-                    .tree_state
-                    .selected()
-                    .first()
-                    .context("Failed to get selected item")
-                    .unwrap();
-
-                #[cfg(debug_assertions)]
-                log::info!("Selected workdir: {}", selected_workdir);
-
-                self.fs_state.workdir = PathBuf::from(selected_workdir);
-                self.fs_state.tree_items = build_tree(&self.fs_state.workdir)
-                    .context("Failed to build tree")
-                    .unwrap();
-                self.ui_state.popup_state = PopupState::None;
-                true
-            }
-            KeyCode::Left => self.fs_state.tree_state.key_left(),
-            KeyCode::Right => self.fs_state.tree_state.key_right(),
-            KeyCode::Down => self.fs_state.tree_state.key_down(),
-            KeyCode::Up => self.fs_state.tree_state.key_up(),
-            KeyCode::Esc => self.fs_state.tree_state.select(Vec::new()),
-            KeyCode::Home => self.fs_state.tree_state.select_first(),
-            KeyCode::End => self.fs_state.tree_state.select_last(),
-            KeyCode::PageDown => self.fs_state.tree_state.scroll_down(3),
-            KeyCode::PageUp => self.fs_state.tree_state.scroll_up(3),
-            _ => false,
-        };
+        Ok(())
     }
 }
 
@@ -580,6 +399,23 @@ impl App {
         let [list_area, item_area] =
             Layout::horizontal([Constraint::Fill(1), Constraint::Fill(1)]).areas(main_area);
 
+        #[cfg(debug_assertions)]
+        {
+            static AREAS_LOGGING: Once = Once::new();
+            AREAS_LOGGING.call_once(|| {
+                log::info!("Area: {:?}", area);
+                log::info!("Header: {:?}", header_area);
+                log::info!("Search: {:?}", search_area);
+                log::info!("Current tab: {:?}", current_tab);
+                log::info!("Options: {:?}", options_area);
+                log::info!("Show options: {:?}", show_options);
+                log::info!("Main: {:?}", main_area);
+                log::info!("Footer: {:?}", footer_area);
+                log::info!("List: {:?}", list_area);
+                log::info!("Item: {:?}", item_area);
+            });
+        }
+
         App::render_header(header_area, frame);
         App::render_footer(footer_area, frame);
         self.render_search(search_area, frame);
@@ -598,7 +434,7 @@ impl App {
 }
 
 impl App {
-    fn next_page(&mut self) {
+    pub(crate) fn next_page(&mut self) {
         self.ui_state.current_page.next_page();
 
         let mut request = RequestChallengeList::new();
@@ -607,7 +443,7 @@ impl App {
             request.send_request().unwrap();
     }
 
-    fn previous_page(&mut self) {
+    pub(crate) fn previous_page(&mut self) {
         self.ui_state.current_page.previous_page();
 
         let mut request = RequestChallengeList::new();
@@ -625,11 +461,14 @@ impl App {
             Tabs::WargameList => self.ui_state.current_tab = Tabs::WargameDetails,
             Tabs::WargameDetails => self.ui_state.current_tab = Tabs::Search,
         }
+
+        #[cfg(debug_assertions)]
+        log::info!("Current tab: {:?}", self.ui_state.current_tab);
     }
 }
 
 impl App {
-    fn apply_popup_selection(&mut self) {
+    pub(crate) fn apply_popup_selection(&mut self) {
         match self.ui_state.options.popup.state {
             OptionsPopupState::CategoryPopup => {
                 self.ui_state.options.items.cat = Category::from_index(
@@ -655,7 +494,7 @@ impl App {
         }
     }
 
-    fn get_popup_items_length(&self) -> usize {
+    pub(crate) fn get_popup_items_length(&self) -> usize {
         match self.ui_state.options.popup.state {
             OptionsPopupState::CategoryPopup => Category::variants().len(),
             OptionsPopupState::DifficultyPopup => Difficulty::variants().len(),
@@ -674,7 +513,7 @@ impl<'a> From<&'a Challenge> for ListItem<'a> {
 }
 
 impl App {
-    fn start_search(&mut self) {
+    pub(crate) fn start_search(&mut self) {
         let mut request = RequestChallengeList::new();
         request.set_search(self.ui_state.search.input.clone());
         request.set_category(self.ui_state.options.items.cat);
@@ -702,10 +541,57 @@ impl App {
                         .context("Failed to write file")
                         .unwrap();
                 }
-                Err(_e) => {
-                    // Error handling needed
-                    // dbg!(e);
+                #[allow(unused_variables)]
+                Err(e) => {
+                    #[cfg(debug_assertions)]
+                    log::error!("Failed to create file: {:?}", e);
                 }
+            }
+        }
+    }
+
+    pub(crate) fn handle_download_file(&mut self) {
+        if let Some(selected_item) = self.ui_state.challenges.state.selected() {
+            let workdir = self
+                .fs_state
+                .workdir
+                .to_str()
+                .context("Failed to get workdir")
+                .unwrap()
+                .to_owned();
+
+            let repository = self.ui_state.challenges.items[selected_item]
+                .get_metadata()
+                .get_repository()
+                .to_owned();
+
+            let file_path = format!("{}/{}.zip", workdir, repository);
+
+            self.start_download(&file_path);
+
+            if self.config.as_ref().unwrap().extract_chall_file {
+                utils::file_extractor::extract_file(
+                    PathBuf::from(&file_path),
+                    PathBuf::from(&workdir),
+                    &repository,
+                )
+                .unwrap();
+            }
+
+            if !self.config.as_ref().unwrap().keep_chall_file {
+                std::fs::remove_file(file_path)
+                    .context("Failed to remove file")
+                    .unwrap();
+            }
+        }
+    }
+
+    pub(crate) fn handle_create_vm(&mut self) {
+        if let Some(selected_item) = self.ui_state.challenges.state.selected() {
+            if self.ui_state.challenges.items[selected_item].create_vm(&self.auth) {
+                // VM created
+                self.vm_state.vm_info =
+                    self.ui_state.challenges.items[selected_item].get_vm_info(&self.auth);
             }
         }
     }

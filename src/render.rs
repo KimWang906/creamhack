@@ -14,6 +14,8 @@ use crate::{
     termui::*,
 };
 
+pub const WARGAME_BLOCK_SIZE: usize = 4;
+
 pub(crate) const fn alternate_colors(i: usize) -> Color {
     if i % 2 == 0 {
         NORMAL_ROW_BG
@@ -37,11 +39,15 @@ impl App {
             .render(area, frame.buffer_mut());
     }
 
-    pub(crate) fn render_search(&self, area: Rect, frame: &mut Frame) {
+    pub(crate) fn render_search(&mut self, area: Rect, frame: &mut Frame) {
         let block = Block::default()
             .title(Line::raw("Search").centered())
             .borders(Borders::ALL)
             .border_set(symbols::border::ROUNDED);
+
+        if let Some(mouse) = self.events.mouse {
+            self.handle_search_mouse_event(mouse, area);
+        }
 
         Paragraph::new(self.ui_state.search.input.as_str())
             .block(block)
@@ -57,6 +63,10 @@ impl App {
     }
 
     pub(crate) fn render_options(&mut self, area: Rect, frame: &mut Frame) {
+        let buttons = self.ui_state.options.get_buttons().clone();
+        let selected_index = self.ui_state.options.get_selected_index();
+
+        // Create the layout for the options
         let options: [Rect; 4] = Layout::horizontal([
             Constraint::Percentage(25),
             Constraint::Percentage(25),
@@ -65,17 +75,21 @@ impl App {
         ])
         .areas(area);
 
-        for (i, &button) in self.ui_state.options.get_buttons().iter().enumerate() {
+        for (i, button) in buttons.iter().enumerate() {
             let block = Block::default()
                 .borders(Borders::ALL)
-                .style(
-                    Style::default().fg(if self.ui_state.options.get_selected_index() == i {
-                        Color::Yellow
-                    } else {
-                        Color::White
-                    }),
-                );
-            let paragraph = Paragraph::new(button.label)
+                .style(Style::default().fg(if selected_index == i {
+                    Color::Yellow
+                } else {
+                    Color::White
+                }));
+
+            if let Some(mouse) = self.events.mouse {
+                self.handle_options_mouse_event(mouse, options[i], i);
+            }
+
+            // Render the widget
+            let paragraph = Paragraph::new(button.label) // Clone the label
                 .block(block)
                 .alignment(Alignment::Center);
             frame.render_widget(paragraph, options[i]);
@@ -155,6 +169,7 @@ impl App {
         frame.render_widget(block, area);
     }
 
+    // 리스트 렌더링 함수
     pub(crate) fn render_list(&mut self, area: Rect, frame: &mut Frame) {
         let block = Block::new()
             .title(Line::raw("Wargames").centered())
@@ -187,11 +202,14 @@ impl App {
             .highlight_symbol(">")
             .highlight_spacing(HighlightSpacing::Always);
 
-        // frame을 바로 전달
         frame.render_stateful_widget(list, area, &mut self.ui_state.challenges.state);
+
+        if let Some(mouse) = self.events.mouse {
+            self.handle_wargames_mouse_event(mouse, area);
+        }
     }
 
-    pub(crate) fn render_selected_item(&self, area: Rect, frame: &mut Frame) {
+    pub(crate) fn render_selected_item(&mut self, area: Rect, frame: &mut Frame) {
         let [detail_area, enter_flag_area, buttons_area, vm_info_area, unused_area] =
             Layout::vertical([
                 Constraint::Percentage(50),
@@ -206,7 +224,12 @@ impl App {
             Layout::vertical([Constraint::Length(3), Constraint::Length(3)]).split(buttons_area);
 
         let info = if let Some(i) = self.ui_state.challenges.state.selected() {
-            format!("{}", self.ui_state.challenges.items[i].to_detailed_info())
+            if i < self.ui_state.challenges.items.len() {
+                format!("{}", self.ui_state.challenges.items[i].to_detailed_info())
+            } else {
+                self.ui_state.challenges.select_last();
+                "Nothing selected...".to_string()
+            }
         } else {
             "Nothing selected...".to_string()
         };
@@ -229,6 +252,11 @@ impl App {
             .title(Line::raw("Enter Flag").centered())
             .borders(Borders::ALL)
             .border_set(symbols::border::ROUNDED);
+
+        // Check for mouse events
+        if let Some(mouse) = self.events.mouse {
+            self.handle_enter_flag_mouse_event(mouse, enter_flag_area);
+        }
 
         Paragraph::new(self.ui_state.enter_flag.input.as_str())
             .block(enter_flag_block)
@@ -254,6 +282,11 @@ impl App {
                         Color::White
                     }),
                 );
+
+            if let Some(mouse) = self.events.mouse {
+                self.handle_challenge_features_mouse_event(mouse, buttons_area[i], i + 1);
+            }
+
             let paragraph = Paragraph::new(button)
                 .block(block)
                 .bg(NORMAL_ROW_BG)
@@ -333,7 +366,8 @@ impl PopupOptions for App {
 
         for (i, item) in T::variants().iter().enumerate() {
             let style = if T::from_index(
-                self.ui_state.options
+                self.ui_state
+                    .options
                     .get_popup()
                     .get_items()
                     .get(self.ui_state.options.get_buttons_index())
@@ -358,19 +392,19 @@ impl PopupOptions for App {
 }
 
 impl App {
-    fn popup_category(&self, area: Rect, frame: &mut Frame) {
+    pub(crate) fn popup_category(&self, area: Rect, frame: &mut Frame) {
         self.popup_options::<Category>(area, frame);
     }
 
-    fn popup_difficulty(&self, area: Rect, frame: &mut Frame) {
+    pub(crate) fn popup_difficulty(&self, area: Rect, frame: &mut Frame) {
         self.popup_options::<Difficulty>(area, frame);
     }
 
-    fn popup_status(&self, area: Rect, frame: &mut Frame) {
+    pub(crate) fn popup_status(&self, area: Rect, frame: &mut Frame) {
         self.popup_options::<Status>(area, frame);
     }
 
-    fn popup_order(&self, area: Rect, frame: &mut Frame) {
+    pub(crate) fn popup_order(&self, area: Rect, frame: &mut Frame) {
         self.popup_options::<Orderings>(area, frame);
     }
 }
