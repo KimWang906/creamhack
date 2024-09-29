@@ -42,24 +42,9 @@
 
 ## Installation
 
-### Ubuntu
-
 ```sh
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-sudo apt install pkg-config libssl-dev libdbus-1-dev
-cargo install --path .
+curl -fsSL https://raw.githubusercontent.com/KimWang906/creamhack/main/installer/installer.sh | sh
 ```
-
-### MacOS
-
-```sh
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-cargo install --path .
-```
-
-### Windows
-
-* TODO
 
 ## Config file
 

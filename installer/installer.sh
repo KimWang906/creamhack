@@ -5,10 +5,16 @@ OS=$(uname)
 if [[ "$OS" == "Linux" ]]; then
     if [ -f "/etc/lsb-release" ]; then
         echo "Detected Ubuntu/Debian-based Linux"
-        echo "Not implemented yet. Please install manually."
+        sudo apt update && sudo apt install -y gcc libssl-dev pkg-config
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && . "$HOME/.cargo/env"
+        git clone https://github.com/KimWang906/creamhack.git
+        cargo install --path ./creamhack
     elif [ -f "/etc/redhat-release" ]; then
         echo "Detected Red Hat/CentOS-based Linux"
-        echo "Not implemented yet. Please install manually."
+        sudo dnf install -y gcc openssl-devel pkgconfig
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && . "$HOME/.cargo/env"
+        git clone https://github.com/KimWang906/creamhack.git
+        cargo install --path ./creamhack
     else
         echo "Detected other Linux distribution"
         echo "Other Linux distributions are not supported."
