@@ -1,6 +1,12 @@
 [package]
 name = "creamhack"
 version = "0.1.0"
+authors = ["hyunbin0550 <hyunbin0550@proton.me>"]
+homepage = ""
+description = "Dreamhack TUI client"
+repository = "https://github.com/KimWang906/creamhack"
+license = "MIT"
+license-file = "LICENSE"
 edition = "2021"
 
 [dependencies]
@@ -30,6 +36,9 @@ keyring = { version = "3.2.1", default-features = false }
 dirs = "5.0.1"
 toml_edit = "0.22.21"
 toml = "0.8.19"
+# Build
+whoami = "1.5.2"
+
 
 [target.x86_64-unknown-linux-gnu.dependencies.keyring]
 version = "3.2.1"
