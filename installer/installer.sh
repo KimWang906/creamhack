@@ -7,14 +7,12 @@ if [[ "$OS" == "Linux" ]]; then
         echo "Detected Ubuntu/Debian-based Linux"
         sudo apt update && sudo apt install -y gcc libssl-dev pkg-config
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && . "$HOME/.cargo/env"
-        git clone https://github.com/KimWang906/creamhack.git
-        cargo install --path ./creamhack
+        cargo install --path creamhack
     elif [ -f "/etc/redhat-release" ]; then
         echo "Detected Red Hat/CentOS-based Linux"
         sudo dnf install -y gcc openssl-devel pkgconfig
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && . "$HOME/.cargo/env"
-        git clone https://github.com/KimWang906/creamhack.git
-        cargo install --path ./creamhack
+        cargo install --path creamhack
     else
         echo "Detected other Linux distribution"
         echo "Other Linux distributions are not supported."
@@ -28,8 +26,7 @@ elif [[ "$OS" == "Darwin" ]]; then
         exit 1
     else
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-        git clone https://github.com/KimWang906/creamhack.git
-        cargo install --path ./creamhack
+        cargo install --path creamhack
     fi
 elif [[ "$OS" == "MINGW"* || "$OS" == "CYGWIN"* ]]; then
     echo "Detected Windows (MINGW/CYGWIN)"
