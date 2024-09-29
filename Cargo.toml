@@ -2,7 +2,7 @@
 name = "creamhack"
 version = "0.1.0"
 authors = ["hyunbin0550 <hyunbin0550@proton.me>"]
-homepage = ""
+homepage = "https://github.com/KimWang906/creamhack"
 description = "Dreamhack TUI client"
 repository = "https://github.com/KimWang906/creamhack"
 license-file = "LICENSE"
