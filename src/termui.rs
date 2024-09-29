@@ -1,4 +1,6 @@
-use std::{env, fs::File, io::Write, path::PathBuf, sync::Once};
+#[cfg(debug_assertions)]
+use std::sync::Once;
+use std::{env, fs::File, io::Write, path::PathBuf};
 
 use crate::{
     custom_widgets::{button::*, input::Input, popup::PopupItem, state_list::*},

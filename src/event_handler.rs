@@ -113,11 +113,13 @@ mod mouse {
                     if area.contains(Position::new(event.column, event.row)) =>
                 {
                     self.ui_state.current_tab.set_tab(Tabs::WargameList);
-                    let offset = self.ui_state.challenges.state.offset();
                     #[cfg(debug_assertions)]
                     {
                         log::info!("Current Mouse X: {}, Y: {}", event.column, event.row);
-                        log::info!("Current Offset: {}", offset);
+                        log::info!(
+                            "Current Offset: {}",
+                            self.ui_state.challenges.state.offset()
+                        );
                     }
 
                     //
